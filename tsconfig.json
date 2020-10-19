@@ -13,8 +13,8 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "target": "esnext",
-    "jsx": "preserve",
-   
+    "jsx": "react",
+    "moduleResolution": "node",
     "lib": [
       "es6", "dom"
     ],
