@@ -31,7 +31,7 @@ function getDevTypes (): Record<string, Record<string, string>> {
 }
 
 async function retrieve (api: ApiPromise): Promise<any> {
-  const [bestHeader, chainProperties, systemChain, systemChainType, systemName, systemVersion, injectedAccounts] = await Promise.all([
+  const [chainProperties, systemChain, systemChainType, systemName, systemVersion, injectedAccounts] = await Promise.all([
     api.rpc.chain.getHeader(),
     api.rpc.system.properties(),
     api.rpc.system.chain(),
