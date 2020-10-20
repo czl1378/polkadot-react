@@ -32,7 +32,6 @@ function getDevTypes (): Record<string, Record<string, string>> {
 
 async function retrieve (api: ApiPromise): Promise<any> {
   const [chainProperties, systemChain, systemChainType, systemName, systemVersion, injectedAccounts] = await Promise.all([
-    api.rpc.chain.getHeader(),
     api.rpc.system.properties(),
     api.rpc.system.chain(),
     api.rpc.system.chainType
@@ -74,7 +73,7 @@ async function loadOnReady (api: ApiPromise, types: Record<string, Record<string
 
   const { injectedAccounts, properties, systemChain, systemChainType, systemName, systemVersion } = await retrieve(api);
  
-  const tokenSymbol = properties.tokenSymbol.unwrapOr(undefined)?.toString();
+  const tokenSymbol = properties.tokenSymbol.unwrapOr('unit')?.toString();
   const tokenDecimals = properties.tokenDecimals.unwrapOr(DEFAULT_DECIMALS).toNumber();
   const isDevelopment = systemChainType.isDevelopment || systemChainType.isLocal || isTestChain(systemChain);
 
@@ -84,7 +83,6 @@ async function loadOnReady (api: ApiPromise, types: Record<string, Record<string
     unit: tokenSymbol
   });
  
-  
   const defaultSection = Object.keys(api.tx)[0];
   const defaultMethod = Object.keys(api.tx[defaultSection])[0];
   const apiDefaultTx = api.tx[defaultSection][defaultMethod];
@@ -104,15 +102,19 @@ async function loadOnReady (api: ApiPromise, types: Record<string, Record<string
   };
 }
 
-function Api ({ children, url }: any): React.ReactElement<any> | null {
+function Api ({ children, url, onReady }: any): React.ReactElement<any> | null {
  
   const [state, setState] = useState<ApiState>({ hasInjectedAccounts: false, isApiReady: false } as unknown as ApiState);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [isApiInitialized, setIsApiInitialized] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [extensions, setExtensions] = useState<any>();
   const value = useMemo<ApiProps>(
-    () => ({ ...state, api, extensions, isApiConnected, isApiInitialized, isWaitingInjected: !extensions }),
-    [extensions, isApiConnected, isApiInitialized, state]
+    () => ({ 
+      ...state, api, extensions, isApiConnected, isApiInitialized, 
+      isWaitingInjected: !extensions, errorMessage
+    }),
+    [extensions, isApiConnected, isApiInitialized, state, errorMessage]
   );
 
   // initial initialization
@@ -124,10 +126,21 @@ function Api ({ children, url }: any): React.ReactElement<any> | null {
 
     api.on('connected', () => setIsApiConnected(true));
     api.on('disconnected', () => setIsApiConnected(false));
+    api.on('error', (err) => {
+      console.error('Api error', err);
+      setErrorMessage(err.toString());
+      setIsApiConnected(false);
+    });
     api.on('ready', async (): Promise<void> => {
       try {
         setState(await loadOnReady(api, types));
+        if (onReady) {
+          setTimeout(() => {
+            onReady();
+          }, 0);
+        }
       } catch (error) {
+        setErrorMessage(error.toString());
         console.error('Unable to load chain', error);
       }
     });
