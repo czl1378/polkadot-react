@@ -1,36 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 import ApiPromise from '@polkadot/api/promise';
-import { web3Accounts, web3Enable } from '@polkadot/extension-dapp';
 import { TypeRegistry } from '@polkadot/types';
 import { formatBalance, isTestChain } from '@polkadot/util';
 import { WsProvider } from '@polkadot/rpc-provider';
+import { web3Accounts, web3Enable } from '@polkadot/extension-dapp';
 
 import ApiContext from './ApiContext';
 
-import store from 'store';
-
 import { ApiState, ApiProps } from './types';
+
+interface Props {
+  children: React.ReactNode;
+  url?: string;
+  onReady?: (any) => void;
+  customTypes?: Record<string, Record<string, string>>;
+}
 
 const registry = new TypeRegistry();
 
 export const DEFAULT_DECIMALS = registry.createType('u32', 15);
 
-const injectedPromise = web3Enable('polkadot-js/apps');
 let api: ApiPromise;
 
 export { api };
 
-function getDevTypes (): Record<string, Record<string, string>> {
-  const types = store.get('types', {}) as Record<string, Record<string, string>>;
-  const names = Object.keys(types);
-
-  names.length && console.log('Injected types:', names.join(', '));
-
-  return types;
-}
-
-async function retrieve (api: ApiPromise): Promise<any> {
+async function retrieve (api: ApiPromise, injectedPromise: Promise<any>): Promise<any> {
   const [chainProperties, systemChain, systemChainType, systemName, systemVersion, injectedAccounts] = await Promise.all([
     api.rpc.system.properties(),
     api.rpc.system.chain(),
@@ -41,7 +36,7 @@ async function retrieve (api: ApiPromise): Promise<any> {
     api.rpc.system.version(),
     injectedPromise
       .then(() => web3Accounts())
-      .then((accounts) => accounts.map(({ address, meta }, whenCreated) => ({
+      .then((accounts) => accounts.map(({ address, meta }, whenCreated): any => ({
         address,
         meta: {
           ...meta,
@@ -50,7 +45,8 @@ async function retrieve (api: ApiPromise): Promise<any> {
         }
       })))
       .catch((error) => {
-        
+        console.error('web3Enable', error);
+
         return [];
       })
   ]);
@@ -68,12 +64,11 @@ async function retrieve (api: ApiPromise): Promise<any> {
   };
 }
 
-async function loadOnReady (api: ApiPromise, types: Record<string, Record<string, string>>): Promise<any> {
-  registry.register(types);
-
-  const { injectedAccounts, properties, systemChain, systemChainType, systemName, systemVersion } = await retrieve(api);
+async function loadOnReady (api: ApiPromise, injectedPromise: Promise<any>): Promise<any> {
+  
+  const { injectedAccounts, properties, systemChain, systemChainType, systemName, systemVersion } = await retrieve(api, injectedPromise);
  
-  const tokenSymbol = properties.tokenSymbol.unwrapOr('unit')?.toString();
+  const tokenSymbol = properties.tokenSymbol.unwrapOr(undefined)?.toString();
   const tokenDecimals = properties.tokenDecimals.unwrapOr(DEFAULT_DECIMALS).toNumber();
   const isDevelopment = systemChainType.isDevelopment || systemChainType.isLocal || isTestChain(systemChain);
 
@@ -90,21 +85,22 @@ async function loadOnReady (api: ApiPromise, types: Record<string, Record<string
   const isSubstrateV2 = !!Object.keys(api.consts).length;
 
   return {
+    injectedAccounts,
     apiDefaultTx,
     apiDefaultTxSudo,
-    injectedAccounts,
     isApiReady: true,
     isDevelopment,
     isSubstrateV2,
     systemChain,
     systemName,
-    systemVersion
+    systemVersion,
+    properties
   };
 }
 
-function Api ({ children, url, onReady }: any): React.ReactElement<any> | null {
+function Api ({ children, url, onReady, customTypes }: Props): React.ReactElement<any> | null {
  
-  const [state, setState] = useState<ApiState>({ hasInjectedAccounts: false, isApiReady: false } as unknown as ApiState);
+  const [state, setState] = useState<ApiState>({ isApiReady: false } as unknown as ApiState);
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [isApiInitialized, setIsApiInitialized] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -112,7 +108,7 @@ function Api ({ children, url, onReady }: any): React.ReactElement<any> | null {
   const value = useMemo<ApiProps>(
     () => ({ 
       ...state, api, extensions, isApiConnected, isApiInitialized, 
-      isWaitingInjected: !extensions, errorMessage
+      isWaitingInjected: !extensions, errorMessage, 
     }),
     [extensions, isApiConnected, isApiInitialized, state, errorMessage]
   );
@@ -120,9 +116,8 @@ function Api ({ children, url, onReady }: any): React.ReactElement<any> | null {
   // initial initialization
   useEffect((): void => {
     const provider = new WsProvider(url);
-    const types = getDevTypes();
-
-    api = new ApiPromise({ provider, registry, types });
+   
+    api = new ApiPromise({ provider, registry, types: customTypes });
 
     api.on('connected', () => setIsApiConnected(true));
     api.on('disconnected', () => setIsApiConnected(false));
@@ -131,23 +126,26 @@ function Api ({ children, url, onReady }: any): React.ReactElement<any> | null {
       setErrorMessage(err.toString());
       setIsApiConnected(false);
     });
-    api.on('ready', async (): Promise<void> => {
-      try {
-        setState(await loadOnReady(api, types));
-        if (onReady) {
-          setTimeout(() => {
-            onReady();
-          }, 0);
-        }
-      } catch (error) {
-        setErrorMessage(error.toString());
-        console.error('Unable to load chain', error);
-      }
-    });
+    api.on('ready', (): void => {
+      const injectedPromise = web3Enable('polkadot-js/apps');
 
-    injectedPromise
-      .then(setExtensions)
-      .catch((error: Error) => console.error(error));
+      injectedPromise
+        .then(setExtensions)
+        .catch(console.error);
+
+      loadOnReady(api, injectedPromise)
+        .then((state) => {
+          setState(state);
+          onReady && onReady({
+            ...state, registry, api
+          });
+        })
+        .catch((error) => {
+          setErrorMessage(error.toString());
+          console.error('Unable to load chain', error);
+        });
+
+    });
 
     setIsApiInitialized(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps

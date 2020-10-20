@@ -24,8 +24,7 @@
     "@polkadot/rpc-provider": "^2.2.2-11",
     "@polkadot/types": "^2.2.2-11",
     "@polkadot/util": "^3.6.0-beta.16",
-    "react": "^16.14.0",
-    "store": "^2.0.12"
+    "react": "^16.14.0"
   },
   "publishConfig": {
     "access": "public",
