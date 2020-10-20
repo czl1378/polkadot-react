@@ -13,7 +13,7 @@ import { ApiState, ApiProps } from './types';
 interface Props {
   children: React.ReactNode;
   url?: string;
-  onReady?: () => void;
+  onReady?: (state: any) => void;
   customTypes?: Record<string, Record<string, string>>;
 }
 
